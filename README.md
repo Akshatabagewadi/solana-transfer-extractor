@@ -1,84 +1,171 @@
-# Solana Transfer Extractor (Substreams)
+# Solana Transfer Extractor
 
-A Rust Substreams map module intended to extract executed native SOL and SPL
-Token / Token-2022 transfer instructions from Solana mainnet blocks
-**385870151 through 385870156**.
+A blockchain data extraction project that identifies native SOL and SPL Token transfer instructions from Solana mainnet blocks using Rust, Substreams, and Python.
 
-## Important interpretation notes
+## Overview
 
-- `SystemProgram::Transfer` is emitted as `asset = "SOL"` and `amount` is in
-  lamports (the raw on-chain integer).
-- SPL `Transfer` and `TransferChecked` are emitted as `asset = "SPL"` and
-  `amount` is the raw token base-unit integer (not decimal-adjusted).
-- The SPL wallet address is taken from token-balance `owner` metadata when
-  available. If unavailable, the token-account address is used as a fallback.
-- Failed transactions are excluded.
-- Both top-level and inner/CPI instructions are inspected.
-- This first implementation intentionally focuses on the canonical System
-  Program transfer opcode and SPL Token transfer opcodes. It does not yet decode
-  System Program `TransferWithSeed`, token multisig semantics, or non-standard
-  token programs. Review these limitations against the employer's expected
-  definition of "transfer".
+The Solana Transfer Extractor processes Solana blockchain transactions and extracts transfer information into structured JSON records.
 
-## Requirements
+The project focuses on extracting transfer details, including sender address, recipient address, and transfer amount.
 
-- Rust toolchain (the project pins Rust 1.75.0)
-- `wasm32-unknown-unknown` target
-- Substreams CLI
-- Substreams provider credentials (run `substreams auth`)
+## Tech Stack
 
-## Build
+- **Rust** – Substreams module development
+- **Substreams** – Blockchain data processing framework
+- **Python** – Solana RPC data extraction and JSON processing
+- **Protocol Buffers** – Structured data definitions
+- **Solana JSON-RPC** – Blockchain data retrieval
+- **JSON** – Output format
 
-```bash
-rustup target add wasm32-unknown-unknown
-substreams build
-substreams pack ./substreams.yaml
-```
+## Features
 
-The build script uses `protoc-bin-vendored` to compile `proto/transfers.proto`
-into Rust code during Cargo build.
+- Extracts native SOL transfer instructions.
+- Supports SPL Token and Token-2022 transfer instructions.
+- Processes top-level and inner transaction instructions.
+- Skips failed transactions.
+- Supports versioned transactions and loaded addresses in the RPC extraction script.
+- Generates structured JSON Lines output.
+- Validates extracted records.
 
-## Run the requested slots
+## Project Scope
 
-Substreams stop blocks are exclusive. To include slots 385870151 through
-385870156, use stop block 385870157:
+The implementation retrieves data from the following Solana mainnet blocks:
 
-```bash
-substreams run ./solana-transfer-extractor-v0.1.0.spkg map_transfers \
-  -e mainnet.sol.streamingfast.io:443 \
-  --start-block 385870151 \
-  --stop-block 385870157
-```
+| Block Number | Transfers Extracted |
+|---|---:|
+| 385870151 | 542 |
+| 385870152 | 581 |
+| 385870153 | 961 |
+| 385870154 | 596 |
+| 385870155 | 474 |
+| 385870156 | 820 |
+| **Total** | **3,974** |
 
-The exact generated SPKG filename may differ; use the filename printed by
-`substreams pack`.
+## Output Format
 
-## JSON output
-
-Substreams protobuf JSON represents 64-bit integers as strings in standard
-protobuf JSON mapping. The assignment asks for JSON numbers. Save the module
-output as JSON and normalize it with:
-
-```bash
-python3 scripts/format_output.py < substreams-output.json > transfers.jsonl
-```
-
-Each line of `transfers.jsonl` will have the requested shape:
+Each transfer is represented as a JSON object containing exactly three fields:
 
 ```json
-{"from":"...","to":"...","amount":123}
+{
+  "from": "sender_wallet_address",
+  "to": "recipient_wallet_address",
+  "amount": 123456
+}
 ```
 
-## Verification checklist
+The output is stored in `transfers.jsonl`, with one JSON object per line.
 
-- [ ] `substreams build` succeeds
-- [ ] `substreams pack` creates an SPKG
-- [ ] `substreams run` completes slots 385870151–385870156
-- [ ] Inspect all transfer records and check sender/recipient ownership
-- [ ] Keep the SPKG, source code, and `transfers.jsonl` together for submission
+Amounts are represented as raw integer units (lamports for SOL and base units for SPL tokens).
 
-## References
+## Project Structure
 
-- Solana Substreams quickstart: https://github.com/streamingfast/substreams-solana-quickstart
-- Substreams Solana crate: https://docs.rs/substreams-solana
-- Solana Substreams docs: https://docs.substreams.dev/how-to-guides/develop-your-own-substreams/solana/explore-solana
+```text
+solana-transfer-extractor/
+│
+├── proto/
+│   ├── solana.proto
+│   └── transfers.proto
+│
+├── scripts/
+│   ├── extract_rpc_transfers.py
+│   └── format_output.py
+│
+├── src/
+│   ├── lib.rs
+│   └── pb/
+│
+├── Cargo.toml
+├── Cargo.lock
+├── build.rs
+├── substreams.yaml
+├── solana-transfer-extractor-v0.1.0.spkg
+├── transfers.jsonl
+└── README.md
+```
+
+## Prerequisites
+
+- Rust stable toolchain
+- Python 3
+- Substreams CLI
+- Protocol Buffers / Buf CLI
+
+## Run the RPC Extraction Script
+
+Download the six required Solana block JSON files using the Solana mainnet RPC endpoint, placing them in the project root with these filenames:
+
+```text
+block-385870151.json
+block-385870152.json
+block-385870153.json
+block-385870154.json
+block-385870155.json
+block-385870156.json
+```
+
+Run:
+
+```bash
+python3 scripts/extract_rpc_transfers.py
+```
+
+The script generates:
+
+```text
+transfers.jsonl
+```
+
+## Build the Substreams Package
+
+Build the Rust WebAssembly package using:
+
+```bash
+cargo build --release --target wasm32-unknown-unknown
+```
+
+Then package it using:
+
+```bash
+substreams build
+```
+
+The generated package is:
+
+```text
+solana-transfer-extractor-v0.1.0.spkg
+```
+
+Executing the package against a Substreams provider requires valid provider authentication.
+
+## Validation
+
+Validate the JSON output:
+
+```bash
+python3 -m json.tool transfers.jsonl
+```
+
+For JSON Lines validation, parse each line individually and verify the required fields.
+
+## Implementation Notes and Limitations
+
+- The Rust Substreams package was successfully built.
+- The 3,974 transfer records were generated using the Python-based Solana RPC extraction script.
+- An authenticated Substreams provider was not available during testing, so the package was not independently executed against the requested block range.
+- SPL token amounts are raw base units, not decimal-adjusted values.
+- The extraction script handles standard System Program transfers and SPL Token `Transfer` and `TransferChecked` instructions. Other transfer instruction variants may not be covered.
+
+## Learning Outcomes
+
+- Understanding Solana blockchain transaction structures.
+- Working with Rust and Substreams.
+- Retrieving blockchain data using JSON-RPC.
+- Processing native SOL and SPL Token instructions.
+- Handling transaction instructions and inner instructions.
+- Generating and validating structured JSON data.
+
+## Author
+
+**Akshata Bagewadi**
+
+GitHub: [Akshatabagewadi](https://github.com/Akshatabagewadi)
