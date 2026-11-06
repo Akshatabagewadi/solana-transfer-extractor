@@ -1,0 +1,4 @@
+target/
+block-385870*.json
+*.swp
+.env
